@@ -9,35 +9,31 @@ st.set_page_config(
 )
 
 st.title("📊 Customer Sales Data Analysis")
-st.write("Analyze product sales, revenue, profit and regional performance.")
+st.write("Analyze sales, profit, products, and regional performance.")
 
-# 1. Load the actual CSV file
-FILE_PATH = "customer_sales_analysis.csv"
-
+# Load CSV data
 try:
-    sales = pd.read_csv(FILE_PATH)
+    sales = pd.read_csv("customer_sales_analysis.csv")
 except FileNotFoundError:
-    st.error(f"CSV file not found: {FILE_PATH}")
-    st.info("Keep the CSV file in the same folder as app.py.")
+    st.error("customer_sales_analysis.csv not found. Keep it beside app.py.")
     st.stop()
 except Exception as e:
-    st.error(f"Could not read the CSV file: {e}")
+    st.error(f"Unable to load CSV: {e}")
     st.stop()
 
 if sales.empty:
-    st.warning("The CSV file contains no data.")
+    st.warning("Your CSV file is empty.")
     st.stop()
 
-# Clean column names
 sales.columns = sales.columns.str.strip()
 
-# Match common column-name variations
-def find_column(possible_names):
+# Find columns despite common naming differences
+def find_column(names):
     lookup = {
-        str(col).strip().lower().replace(" ", "_"): col
-        for col in sales.columns
+        str(c).strip().lower().replace(" ", "_"): c
+        for c in sales.columns
     }
-    for name in possible_names:
+    for name in names:
         key = name.lower().replace(" ", "_")
         if key in lookup:
             return lookup[key]
@@ -52,75 +48,62 @@ revenue_col = find_column(["Revenue", "Sales", "Total_Sales"])
 profit_col = find_column(["Profit", "Total_Profit"])
 cost_col = find_column(["Unit_Cost", "Cost_Price"])
 
-# Required columns for product analysis
 if product_col is None:
-    st.error("Product column not found in the CSV.")
-    st.write("Available columns:", sales.columns.tolist())
+    st.error("Product column not found.")
+    st.write("CSV columns found:", sales.columns.tolist())
     st.stop()
 
-sales["Product"] = sales[product_col].astype(str)
+# Standardize fields
+sales["Product"] = sales[product_col].fillna("Unknown").astype(str)
 
-if quantity_col is not None:
-    sales["Quantity"] = pd.to_numeric(
-        sales[quantity_col], errors="coerce"
-    ).fillna(0)
-else:
-    sales["Quantity"] = 0
+sales["Quantity"] = (
+    pd.to_numeric(sales[quantity_col], errors="coerce").fillna(0)
+    if quantity_col else 0
+)
 
-if price_col is not None:
-    sales["Unit_Price"] = pd.to_numeric(
-        sales[price_col], errors="coerce"
-    )
-else:
-    sales["Unit_Price"] = None
-
-# Revenue: use existing column or calculate it
-if revenue_col is not None:
+if revenue_col:
     sales["Revenue"] = pd.to_numeric(
         sales[revenue_col], errors="coerce"
     )
-elif price_col is not None and quantity_col is not None:
-    sales["Revenue"] = sales["Quantity"] * sales["Unit_Price"]
+elif price_col and quantity_col:
+    sales["Revenue"] = (
+        sales["Quantity"] *
+        pd.to_numeric(sales[price_col], errors="coerce")
+    )
 else:
-    sales["Revenue"] = None
+    sales["Revenue"] = float("nan")
 
-# Profit: use actual profit if provided; otherwise calculate
-# only when a cost column is available.
-if profit_col is not None:
+if profit_col:
     sales["Profit"] = pd.to_numeric(
         sales[profit_col], errors="coerce"
     )
-elif cost_col is not None and quantity_col is not None:
-    sales["Unit_Cost"] = pd.to_numeric(
-        sales[cost_col], errors="coerce"
-    )
-    sales["Profit"] = (
-        sales["Revenue"] - sales["Quantity"] * sales["Unit_Cost"]
-    )
+elif cost_col and quantity_col:
+    unit_cost = pd.to_numeric(sales[cost_col], errors="coerce")
+    sales["Profit"] = sales["Revenue"] - sales["Quantity"] * unit_cost
 else:
-    sales["Profit"] = None
+    sales["Profit"] = float("nan")
 
-# Region handling
-if region_col is not None:
-    sales["Region"] = sales[region_col].fillna("Unknown").astype(str)
-else:
-    sales["Region"] = "Not provided"
+sales["Region"] = (
+    sales[region_col].fillna("Unknown").astype(str)
+    if region_col else "Not provided"
+)
 
-# Date handling
-if date_col is not None:
+if date_col:
     sales["Order_Date"] = pd.to_datetime(
         sales[date_col], errors="coerce"
     )
-    sales["Month"] = sales["Order_Date"].dt.strftime("%b")
+    sales["Month"] = sales["Order_Date"].dt.to_period("M").astype(str)
 
 # Sidebar filters
-st.sidebar.header("🔎 Filters")
+st.sidebar.header("🔎 Dashboard Filters")
 
 regions = ["All"] + sorted(sales["Region"].unique().tolist())
-selected_region = st.sidebar.selectbox("Select Region", regions)
+selected_region = st.sidebar.selectbox("Region", regions)
 
 products = ["All"] + sorted(sales["Product"].unique().tolist())
-selected_product = st.sidebar.selectbox("Select Product", products)
+selected_product = st.sidebar.selectbox("Product", products)
+
+search = st.sidebar.text_input("Search product")
 
 filtered = sales.copy()
 
@@ -130,78 +113,88 @@ if selected_region != "All":
 if selected_product != "All":
     filtered = filtered[filtered["Product"] == selected_product]
 
-# Key performance indicators
+if search.strip():
+    filtered = filtered[
+        filtered["Product"].str.contains(
+            search.strip(), case=False, na=False, regex=False
+        )
+    ]
+
+# KPI cards update with all filters
 st.subheader("📌 Key Performance Indicators")
 
 c1, c2, c3 = st.columns(3)
 
-total_revenue = filtered["Revenue"].sum()
-c1.metric(
-    "Total Revenue",
-    f"₹{total_revenue:,.2f}" if pd.notna(total_revenue) else "Unavailable"
-)
+revenue = filtered["Revenue"].sum()
+profit = filtered["Profit"].sum()
 
-total_profit = filtered["Profit"].sum()
+c1.metric("Total Revenue", f"₹{revenue:,.2f}")
 c2.metric(
     "Total Profit",
-    f"₹{total_profit:,.2f}" if pd.notna(total_profit) else "Unavailable"
+    f"₹{profit:,.2f}" if filtered["Profit"].notna().any() else "Unavailable"
 )
-
 c3.metric("Units Sold", f"{filtered['Quantity'].sum():,.0f}")
 
-# Revenue by product
+# Revenue chart
 st.subheader("💰 Revenue by Product")
 
 if filtered["Revenue"].notna().any():
-    product_revenue = filtered.groupby("Product")["Revenue"].sum()
-    st.bar_chart(product_revenue)
+    st.bar_chart(filtered.groupby("Product")["Revenue"].sum())
 else:
-    st.info("Revenue cannot be calculated. Check the CSV price and quantity columns.")
+    st.info("Revenue data is unavailable.")
 
-# Profit by product
+# Profit chart
 st.subheader("📈 Profit by Product")
 
 if filtered["Profit"].notna().any():
-    product_profit = filtered.groupby("Product")["Profit"].sum()
-    st.bar_chart(product_profit)
+    st.bar_chart(filtered.groupby("Product")["Profit"].sum())
 else:
-    st.info("Profit is unavailable because cost or profit data is missing.")
+    st.info("Profit data or cost information is unavailable.")
 
-# Monthly sales trend
+# Monthly trend
 st.subheader("📅 Monthly Sales Trend")
 
-if date_col is not None and filtered["Order_Date"].notna().any():
-    monthly_sales = (
+if date_col and filtered["Order_Date"].notna().any():
+    monthly = (
         filtered.dropna(subset=["Order_Date"])
         .set_index("Order_Date")
         .resample("MS")["Revenue"]
         .sum()
     )
-    st.line_chart(monthly_sales)
+    st.line_chart(monthly)
 else:
-    st.info("Monthly trend needs a valid date column in the CSV.")
+    st.info("Add a valid order date column to show monthly trends.")
 
-# Region-wise revenue
+# Region comparison
 st.subheader("🌍 Region-wise Revenue")
 
-if region_col is not None and filtered["Revenue"].notna().any():
-    region_revenue = filtered.groupby("Region")["Revenue"].sum()
-    st.bar_chart(region_revenue)
+if region_col and filtered["Revenue"].notna().any():
+    st.bar_chart(filtered.groupby("Region")["Revenue"].sum())
 else:
-    st.info("Region-wise analysis needs a Region column and revenue data.")
+    st.info("Region or revenue data is unavailable.")
 
-# Sales data
+# Business insights use filtered results
+st.subheader("💡 Business Insights")
+
+if not filtered.empty and filtered["Revenue"].notna().any():
+    top_product = filtered.groupby("Product")["Revenue"].sum().idxmax()
+    st.write(f"🏆 Highest revenue product: **{top_product}**")
+
+    if region_col:
+        top_region = filtered.groupby("Region")["Revenue"].sum().idxmax()
+        st.write(f"🌍 Highest revenue region: **{top_region}**")
+else:
+    st.info("No sales insights available for these filters.")
+
+# Sales table
 st.subheader("🧾 Sales Data")
 st.dataframe(filtered, use_container_width=True)
 
-# Download filtered data
-csv_data = filtered.to_csv(index=False).encode("utf-8")
-
 st.download_button(
-    label="⬇️ Download Sales Data as CSV",
-    data=csv_data,
+    "⬇️ Download Filtered Sales CSV",
+    data=filtered.to_csv(index=False).encode("utf-8"),
     file_name="sales_analysis.csv",
     mime="text/csv"
 )
 
-st.caption("Dashboard results are based on the uploaded CSV data.")
+st.caption("Analysis uses the CSV data. Profit is shown only when profit or cost data is available.")
