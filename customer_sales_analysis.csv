@@ -1,0 +1,11 @@
+Product,Category,Quantity,Unit_Price,Region,Revenue,Order_Date,Month,Unit_Cost,Total_Cost,Profit,Profit_Margin_Percent
+Laptop,Electronics,2,50000,North,100000,2026-01-05,Jan,35000,70000,30000,30.0
+Phone,Electronics,5,20000,South,100000,2026-01-12,Jan,12000,60000,40000,40.0
+Tablet,Electronics,3,15000,East,45000,2026-02-03,Feb,9000,27000,18000,40.0
+Laptop,Electronics,1,50000,West,50000,2026-02-15,Feb,35000,35000,15000,30.0
+Phone,Electronics,4,20000,North,80000,2026-03-02,Mar,12000,48000,32000,40.0
+Tablet,Electronics,2,15000,South,30000,2026-03-18,Mar,9000,18000,12000,40.0
+Laptop,Electronics,3,50000,East,150000,2026-04-04,Apr,35000,105000,45000,30.0
+Phone,Electronics,6,20000,West,120000,2026-04-21,Apr,12000,72000,48000,40.0
+Tablet,Electronics,1,15000,North,15000,2026-05-10,May,9000,9000,6000,40.0
+Laptop,Electronics,2,50000,South,100000,2026-05-25,May,35000,70000,30000,30.0
